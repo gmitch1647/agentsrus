@@ -18,6 +18,7 @@ from agents.slack_agent     import run_all_slack_agents, start_socket_mode
 from slack_bot              import start_slack_bot
 import uvicorn
 from api                    import app as fastapi_app
+from seed                   import seed, ensure_schema
 
 
 def safe_run(fn, name: str):
@@ -56,6 +57,11 @@ if __name__ == "__main__":
     if missing:
         logger.error(f"Missing env vars: {', '.join(missing)}")
         exit(1)
+
+    # Auto-seed database on every startup
+    from config import supabase
+    ensure_schema(supabase)
+    seed(supabase)
 
     skip = os.environ.get("SKIP_STARTUP_RUN", "false").lower() == "true"
     if not skip:
