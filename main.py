@@ -16,6 +16,8 @@ from agents.tiktok_agent    import run_all_tiktok_agents
 from agents.scheduler_agent import run_all_scheduler_agents
 from agents.slack_agent     import run_all_slack_agents, start_socket_mode
 from slack_bot              import start_slack_bot
+import uvicorn
+from api                    import app as fastapi_app
 
 
 def safe_run(fn, name: str):
@@ -58,6 +60,15 @@ if __name__ == "__main__":
     skip = os.environ.get("SKIP_STARTUP_RUN", "false").lower() == "true"
     if not skip:
         run_startup_sequence()
+
+    # Start FastAPI in background thread so Lovable can trigger agents
+    port = int(os.environ.get("PORT", 8000))
+    api_thread = threading.Thread(
+        target=lambda: uvicorn.run(fastapi_app, host="0.0.0.0", port=port, log_level="warning"),
+        daemon=True,
+    )
+    api_thread.start()
+    logger.info(f"[API] REST API running on port {port}")
 
     start_socket_mode()
 
