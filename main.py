@@ -13,6 +13,7 @@ from agents.analyst_agent   import run_all_analyst_agents
 from agents.writer_agent    import run_all_writer_agents
 from agents.tiktok_agent    import run_all_tiktok_agents
 from agents.scheduler_agent import run_all_scheduler_agents
+from agents.slack_agent     import run_all_slack_agents, start_socket_mode
 
 
 def safe_run(fn, name: str):
@@ -34,6 +35,7 @@ def run_startup_sequence():
     time.sleep(30)
     safe_run(run_all_tiktok_agents,    "TikTok Agent")
     safe_run(run_all_scheduler_agents, "Scheduler Agent")
+    safe_run(run_all_slack_agents,     "Slack Agent")
     logger.success("Initial pipeline complete — switching to scheduled mode")
 
 
@@ -55,13 +57,16 @@ if __name__ == "__main__":
     if not skip:
         run_startup_sequence()
 
+    start_socket_mode()
+
     schedule.every(2).hours.at(":00").do(lambda: safe_run(run_all_scout_agents,     "Scout Agent"))
     schedule.every(2).hours.at(":30").do(lambda: safe_run(run_all_analyst_agents,   "Analyst Agent"))
     schedule.every(2).hours.at(":00").do(lambda: safe_run(run_all_writer_agents,    "Writer Agent"))
     schedule.every(2).hours.at(":30").do(lambda: safe_run(run_all_tiktok_agents,    "TikTok Agent"))
     schedule.every(30).minutes.do(lambda:        safe_run(run_all_scheduler_agents, "Scheduler Agent"))
+    schedule.every(5).minutes.do(lambda:         safe_run(run_all_slack_agents,     "Slack Agent"))
 
-    logger.info("Agents running on schedule — Scout/Writer every 2h, Scheduler every 30min")
+    logger.info("Agents running on schedule — Scout/Writer every 2h, Scheduler every 30min, Slack every 5min")
 
     while True:
         schedule.run_pending()

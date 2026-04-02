@@ -13,6 +13,11 @@ APIFY_API_TOKEN      = os.environ["APIFY_API_TOKEN"]
 ANTHROPIC_API_KEY    = os.environ["ANTHROPIC_API_KEY"]
 BUFFER_ACCESS_TOKEN  = os.environ["BUFFER_ACCESS_TOKEN"]
 
+# Slack (optional — app starts fine without these)
+SLACK_BOT_TOKEN  = os.environ.get("SLACK_BOT_TOKEN", "")
+SLACK_APP_TOKEN  = os.environ.get("SLACK_APP_TOKEN", "")
+SLACK_CHANNEL_ID = os.environ.get("SLACK_CHANNEL_ID", "")
+
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
 anthropic_client = Anthropic(api_key=ANTHROPIC_API_KEY)
 apify_client     = ApifyClient(APIFY_API_TOKEN)
