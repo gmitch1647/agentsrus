@@ -6,6 +6,7 @@ Orchestrates all 5 agents on their schedules. Runs 24/7 on Railway.
 import schedule
 import time
 import os
+import threading
 from loguru import logger
 
 from agents.scout_agent     import run_all_scout_agents
@@ -14,6 +15,7 @@ from agents.writer_agent    import run_all_writer_agents
 from agents.tiktok_agent    import run_all_tiktok_agents
 from agents.scheduler_agent import run_all_scheduler_agents
 from agents.slack_agent     import run_all_slack_agents, start_socket_mode
+from slack_bot              import start_slack_bot
 
 
 def safe_run(fn, name: str):
@@ -58,6 +60,10 @@ if __name__ == "__main__":
         run_startup_sequence()
 
     start_socket_mode()
+
+    slack_thread = threading.Thread(target=start_slack_bot, daemon=True)
+    slack_thread.start()
+    logger.info("[Slack] Bot running in background")
 
     schedule.every(2).hours.at(":00").do(lambda: safe_run(run_all_scout_agents,     "Scout Agent"))
     schedule.every(2).hours.at(":30").do(lambda: safe_run(run_all_analyst_agents,   "Analyst Agent"))
