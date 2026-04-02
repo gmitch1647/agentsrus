@@ -165,87 +165,23 @@ CREATE INDEX IF NOT EXISTS notifications_slack_sent_idx ON notifications(slack_s
 
 
 -- ============================================================
--- Row Level Security
--- Keeps each user's data private.
+-- Disable RLS on all tables
+-- Railway backend uses service role key (full access).
+-- Lovable frontend uses anon key (read/write via open policies).
 -- ============================================================
 
-ALTER TABLE agents           ENABLE ROW LEVEL SECURITY;
-ALTER TABLE agent_runs       ENABLE ROW LEVEL SECURITY;
-ALTER TABLE scraped_trends   ENABLE ROW LEVEL SECURITY;
-ALTER TABLE brand_profiles   ENABLE ROW LEVEL SECURITY;
-ALTER TABLE generated_posts  ENABLE ROW LEVEL SECURITY;
-ALTER TABLE tiktok_scripts   ENABLE ROW LEVEL SECURITY;
-ALTER TABLE scheduled_posts  ENABLE ROW LEVEL SECURITY;
-ALTER TABLE notifications    ENABLE ROW LEVEL SECURITY;
-
--- agents
-CREATE POLICY "users manage own agents"
-    ON agents FOR ALL USING (auth.uid() = user_id);
-
--- agent_runs (access via agent ownership)
-CREATE POLICY "users view own agent runs"
-    ON agent_runs FOR ALL
-    USING (agent_id IN (SELECT id FROM agents WHERE user_id = auth.uid()));
-
--- scraped_trends
-CREATE POLICY "users manage own trends"
-    ON scraped_trends FOR ALL USING (auth.uid() = user_id);
-
--- brand_profiles
-CREATE POLICY "users manage own brand profiles"
-    ON brand_profiles FOR ALL USING (auth.uid() = user_id);
-
--- generated_posts
-CREATE POLICY "users manage own posts"
-    ON generated_posts FOR ALL USING (auth.uid() = user_id);
-
--- tiktok_scripts (access via post ownership)
-CREATE POLICY "users manage own tiktok scripts"
-    ON tiktok_scripts FOR ALL
-    USING (post_id IN (SELECT id FROM generated_posts WHERE user_id = auth.uid()));
-
--- scheduled_posts
-CREATE POLICY "users manage own scheduled posts"
-    ON scheduled_posts FOR ALL USING (auth.uid() = user_id);
-
--- notifications
-CREATE POLICY "users manage own notifications"
-    ON notifications FOR ALL USING (auth.uid() = user_id);
+ALTER TABLE agents           DISABLE ROW LEVEL SECURITY;
+ALTER TABLE agent_runs       DISABLE ROW LEVEL SECURITY;
+ALTER TABLE scraped_trends   DISABLE ROW LEVEL SECURITY;
+ALTER TABLE brand_profiles   DISABLE ROW LEVEL SECURITY;
+ALTER TABLE generated_posts  DISABLE ROW LEVEL SECURITY;
+ALTER TABLE tiktok_scripts   DISABLE ROW LEVEL SECURITY;
+ALTER TABLE scheduled_posts  DISABLE ROW LEVEL SECURITY;
+ALTER TABLE notifications    DISABLE ROW LEVEL SECURITY;
 
 
 -- ============================================================
--- Service Role Bypass
--- The backend uses the service role key, which bypasses RLS.
--- No extra policy needed — this is Supabase's default behaviour.
+-- trigger_run column for Lovable UI manual triggers
 -- ============================================================
 
-
--- ============================================================
--- Seed: Default Brand Profile
--- Replace <YOUR_USER_ID> with your actual Supabase user UUID
--- (find it in: Supabase → Authentication → Users)
--- ============================================================
-
--- INSERT INTO brand_profiles (user_id, brand_name, persona, tone, topics, avoid_list, is_default)
--- VALUES (
---     '<YOUR_USER_ID>',
---     'AgentsRus',
---     'expert',
---     'educational and authoritative',
---     ARRAY['business funding','business credit','SBA loans','startup grants','cash flow'],
---     ARRAY['predatory lenders','guaranteed approval claims'],
---     true
--- );
-
--- ============================================================
--- Seed: Default Agent Rows (one per agent type per user)
--- Uncomment and replace <YOUR_USER_ID> to activate all agents
--- ============================================================
-
--- INSERT INTO agents (user_id, type, config) VALUES
---     ('<YOUR_USER_ID>', 'scout',     '{"platforms":["tiktok","instagram","facebook","linkedin"],"min_engagement":1000}'),
---     ('<YOUR_USER_ID>', 'analyst',   '{"min_viral_score":55}'),
---     ('<YOUR_USER_ID>', 'writer',    '{}'),
---     ('<YOUR_USER_ID>', 'tiktok',    '{"target_duration_secs":60}'),
---     ('<YOUR_USER_ID>', 'scheduler', '{}'),
---     ('<YOUR_USER_ID>', 'slack',     '{}');
+ALTER TABLE agents ADD COLUMN IF NOT EXISTS trigger_run boolean NOT NULL DEFAULT false;
