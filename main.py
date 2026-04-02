@@ -85,6 +85,31 @@ if __name__ == "__main__":
 
     logger.info("Agents running on schedule — Scout/Writer every 2h, Scheduler every 30min, Slack every 5min")
 
+    def check_triggers():
+        """Poll agents table for trigger_run=true and execute those agents."""
+        agent_map = {
+            "scout":     run_all_scout_agents,
+            "analyst":   run_all_analyst_agents,
+            "writer":    run_all_writer_agents,
+            "tiktok":    run_all_tiktok_agents,
+            "scheduler": run_all_scheduler_agents,
+            "slack":     run_all_slack_agents,
+        }
+        try:
+            from config import supabase
+            result = supabase.table("agents").select("id,type").eq("trigger_run", True).execute()
+            for agent in (result.data or []):
+                agent_type = agent["type"]
+                logger.info(f"[Trigger] Manual trigger detected for {agent_type}")
+                supabase.table("agents").update({"trigger_run": False}).eq("id", agent["id"]).execute()
+                fn = agent_map.get(agent_type)
+                if fn:
+                    threading.Thread(target=lambda f=fn: safe_run(f, f"{agent_type.title()} Agent"), daemon=True).start()
+        except Exception as e:
+            logger.error(f"[Trigger] Poll error: {e}")
+
+    schedule.every(10).seconds.do(check_triggers)
+
     while True:
         schedule.run_pending()
-        time.sleep(30)
+        time.sleep(5)
