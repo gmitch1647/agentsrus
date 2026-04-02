@@ -11,7 +11,7 @@ from loguru import logger
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 ACTORS = {
-    "tiktok":    "clockworks/free-tiktok-scraper",
+    "tiktok":    "GdWCkxBtKWOsKjdch",
     "instagram": "apify/instagram-hashtag-scraper",
     "facebook":  "apify/facebook-posts-scraper",
     "linkedin":  "curious_coder/linkedin-post-search-scraper",
@@ -104,24 +104,35 @@ def is_duplicate(user_id: str, content: str) -> bool:
 def scrape_tiktok(keyword: str) -> list[dict]:
     logger.info(f"[Scout] Scraping TikTok for: {keyword}")
     run = apify_client.actor(ACTORS["tiktok"]).call(run_input={
-        "keywords": [keyword],
-        "maxItems": 20,
-        "type":     "search",
+        "searchQueries":          [keyword],
+        "resultsPerPage":         20,
+        "searchSection":          "",
+        "searchSorting":          "0",
+        "searchDatePosted":       "0",
+        "maxProfilesPerQuery":    5,
+        "scrapeRelatedVideos":    False,
+        "shouldDownloadVideos":   False,
+        "shouldDownloadCovers":   False,
+        "shouldDownloadAvatars":  False,
+        "commentsPerPost":        0,
+        "maxRepliesPerComment":   0,
+        "proxyCountryCode":       "None",
     })
     items = []
     for item in apify_client.dataset(run["defaultDatasetId"]).iterate_items():
         text = item.get("text") or item.get("desc") or ""
         if not text:
             continue
+        author = item.get("authorMeta") or item.get("author") or {}
         items.append({
             "source_platform":  "tiktok",
-            "source_url":       item.get("webVideoUrl") or "",
-            "source_handle":    item.get("authorMeta", {}).get("name") or "",
+            "source_url":       item.get("webVideoUrl") or item.get("url") or "",
+            "source_handle":    author.get("name") or author.get("uniqueId") or "",
             "original_content": text,
             "engagement_count": (
-                int(item.get("diggCount", 0)) +
+                int(item.get("diggCount",    0)) +
                 int(item.get("commentCount", 0)) +
-                int(item.get("shareCount", 0))
+                int(item.get("shareCount",   0))
             ),
             "topic_tags": [keyword],
         })
