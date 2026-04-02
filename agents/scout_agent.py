@@ -10,8 +10,6 @@ from config import supabase, apify_client
 from loguru import logger
 from tenacity import retry, stop_after_attempt, wait_exponential
 
-
-# ── Apify actor IDs ───────────────────────────────────────────────────────────
 ACTORS = {
     "tiktok":    "clockworks/free-tiktok-scraper",
     "instagram": "apify/instagram-hashtag-scraper",
@@ -19,7 +17,6 @@ ACTORS = {
     "linkedin":  "curious_coder/linkedin-post-search-scraper",
 }
 
-# ── Keywords to search across all platforms ───────────────────────────────────
 KEYWORDS = [
     "business funding",
     "business credit",
@@ -28,18 +25,6 @@ KEYWORDS = [
     "business line of credit",
     "credit score business",
 ]
-
-
-def get_agent(user_id: str) -> dict | None:
-    result = (
-        supabase.table("agents")
-        .select("*")
-        .eq("user_id", user_id)
-        .eq("type", "scout")
-        .single()
-        .execute()
-    )
-    return result.data
 
 
 def get_all_scout_agents() -> list[dict]:
@@ -64,21 +49,20 @@ def start_run(agent_id: str) -> str:
         .execute()
     )
     supabase.table("agents").update({
-        "status":      "running",
-        "updated_at":  datetime.now(timezone.utc).isoformat(),
+        "status":     "running",
+        "updated_at": datetime.now(timezone.utc).isoformat(),
     }).eq("id", agent_id).execute()
     return result.data[0]["id"]
 
 
 def finish_run(run_id: str, agent_id: str, found: int, processed: int, notes: str = ""):
     supabase.table("agent_runs").update({
-        "completed_at":   datetime.now(timezone.utc).isoformat(),
-        "status":         "success",
-        "items_found":    found,
+        "completed_at":    datetime.now(timezone.utc).isoformat(),
+        "status":          "success",
+        "items_found":     found,
         "items_processed": processed,
-        "notes":          notes,
+        "notes":           notes,
     }).eq("id", run_id).execute()
-
     supabase.table("agents").update({
         "status":      "idle",
         "last_run_at": datetime.now(timezone.utc).isoformat(),
@@ -92,7 +76,6 @@ def error_run(run_id: str, agent_id: str, error: str):
         "status":       "error",
         "notes":        error,
     }).eq("id", run_id).execute()
-
     supabase.table("agents").update({
         "status":    "error",
         "error_log": error,
@@ -101,7 +84,6 @@ def error_run(run_id: str, agent_id: str, error: str):
 
 
 def is_duplicate(user_id: str, content: str) -> bool:
-    """Check if very similar content already exists for this user."""
     existing = (
         supabase.table("scraped_trends")
         .select("original_content")
@@ -122,9 +104,9 @@ def is_duplicate(user_id: str, content: str) -> bool:
 def scrape_tiktok(keyword: str) -> list[dict]:
     logger.info(f"[Scout] Scraping TikTok for: {keyword}")
     run = apify_client.actor(ACTORS["tiktok"]).call(run_input={
-        "keywords":   [keyword],
-        "maxItems":   20,
-        "type":       "search",
+        "keywords": [keyword],
+        "maxItems": 20,
+        "type":     "search",
     })
     items = []
     for item in apify_client.dataset(run["defaultDatasetId"]).iterate_items():
@@ -133,7 +115,7 @@ def scrape_tiktok(keyword: str) -> list[dict]:
             continue
         items.append({
             "source_platform":  "tiktok",
-            "source_url":       item.get("webVideoUrl") or item.get("shareUrl") or "",
+            "source_url":       item.get("webVideoUrl") or "",
             "source_handle":    item.get("authorMeta", {}).get("name") or "",
             "original_content": text,
             "engagement_count": (
@@ -141,7 +123,7 @@ def scrape_tiktok(keyword: str) -> list[dict]:
                 int(item.get("commentCount", 0)) +
                 int(item.get("shareCount", 0))
             ),
-            "topic_tags":       [keyword],
+            "topic_tags": [keyword],
         })
     return items
 
@@ -151,7 +133,7 @@ def scrape_instagram(keyword: str) -> list[dict]:
     logger.info(f"[Scout] Scraping Instagram for: {keyword}")
     hashtag = keyword.replace(" ", "")
     run = apify_client.actor(ACTORS["instagram"]).call(run_input={
-        "hashtags":    [hashtag],
+        "hashtags":     [hashtag],
         "resultsLimit": 20,
     })
     items = []
@@ -168,7 +150,7 @@ def scrape_instagram(keyword: str) -> list[dict]:
                 int(item.get("likesCount", 0)) +
                 int(item.get("commentsCount", 0))
             ),
-            "topic_tags":       [keyword],
+            "topic_tags": [keyword],
         })
     return items
 
@@ -177,8 +159,8 @@ def scrape_instagram(keyword: str) -> list[dict]:
 def scrape_facebook(keyword: str) -> list[dict]:
     logger.info(f"[Scout] Scraping Facebook for: {keyword}")
     run = apify_client.actor(ACTORS["facebook"]).call(run_input={
-        "query":      keyword,
-        "maxItems":   15,
+        "query":    keyword,
+        "maxItems": 15,
     })
     items = []
     for item in apify_client.dataset(run["defaultDatasetId"]).iterate_items():
@@ -195,7 +177,7 @@ def scrape_facebook(keyword: str) -> list[dict]:
                 int(item.get("comments", 0)) +
                 int(item.get("shares", 0))
             ),
-            "topic_tags":       [keyword],
+            "topic_tags": [keyword],
         })
     return items
 
@@ -221,7 +203,7 @@ def scrape_linkedin(keyword: str) -> list[dict]:
                 int(item.get("numLikes", 0)) +
                 int(item.get("numComments", 0))
             ),
-            "topic_tags":       [keyword],
+            "topic_tags": [keyword],
         })
     return items
 
@@ -245,7 +227,7 @@ def save_trends(user_id: str, run_id: str, trends: list[dict]) -> int:
 
 def run_scout(user_id: str, agent_id: str, config: dict):
     logger.info(f"[Scout] Starting run for user {user_id}")
-    run_id = start_run(agent_id)
+    run_id     = start_run(agent_id)
     all_trends = []
     keywords   = config.get("keywords", KEYWORDS)
     platforms  = config.get("platforms", ["tiktok", "instagram", "facebook", "linkedin"])
@@ -262,7 +244,6 @@ def run_scout(user_id: str, agent_id: str, config: dict):
             if "linkedin"  in platforms:
                 all_trends += scrape_linkedin(keyword)
 
-        # filter by minimum engagement
         filtered = [t for t in all_trends if t["engagement_count"] >= min_eng]
         saved    = save_trends(user_id, run_id, filtered)
 
@@ -277,6 +258,5 @@ def run_scout(user_id: str, agent_id: str, config: dict):
 
 def run_all_scout_agents():
     agents = get_all_scout_agents()
-    logger.info(f"[Scout] Running {len(agents)} scout agents")
     for agent in agents:
         run_scout(agent["user_id"], agent["id"], agent.get("config", {}))

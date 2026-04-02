@@ -1,9 +1,7 @@
 """
 TikTok Agent
-Runs after Writer. For every pending TikTok post in generated_posts,
-generates a full video script with hook line, body script, CTA,
-on-screen text suggestions, and estimated duration.
-Writes to tiktok_scripts table.
+Generates full video scripts with hook, body, CTA for every
+pending TikTok post. Writes to tiktok_scripts table.
 """
 
 from datetime import datetime, timezone
@@ -69,15 +67,13 @@ def error_run(run_id: str, agent_id: str, error: str):
     }).eq("id", agent_id).execute()
 
 
-def get_unscripted_tiktok_posts(user_id: str) -> list[dict]:
-    """Get TikTok posts that don't have a script yet."""
+def get_unscripted_posts(user_id: str) -> list[dict]:
     scripted = (
         supabase.table("tiktok_scripts")
         .select("post_id")
         .execute()
     )
     scripted_ids = {r["post_id"] for r in (scripted.data or [])}
-
     result = (
         supabase.table("generated_posts")
         .select("*")
@@ -88,44 +84,30 @@ def get_unscripted_tiktok_posts(user_id: str) -> list[dict]:
         .limit(20)
         .execute()
     )
-    posts = result.data or []
-    return [p for p in posts if p["id"] not in scripted_ids]
+    return [p for p in (result.data or []) if p["id"] not in scripted_ids]
 
 
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=2, min=4, max=30))
-def generate_tiktok_script(post: dict, config: dict) -> dict:
-    hook_styles = config.get("hook_styles", ["question", "stat", "story"])
-    target_secs = config.get("target_duration_secs", 60)
+def generate_script(post: dict, config: dict) -> dict:
+    target = config.get("target_duration_secs", 60)
+    prompt = f"""You are an expert TikTok scriptwriter for business funding content.
 
-    prompt = f"""You are an expert TikTok scriptwriter specializing in business funding and credit content.
+Convert this post into a complete TikTok script for a {target}-second video.
 
-Convert this post into a complete TikTok video script optimized for maximum watch time and engagement.
+POST: {post['content']}
 
-POST CONTENT:
-{post['content']}
+The hook MUST stop the scroll in 2-3 seconds. Use open loops and curiosity gaps.
+End with a strong CTA driving comments or follows.
 
-HOOK LINE (from post): {post.get('hook', '')}
-
-Create a script for a {target_secs}-second TikTok video.
-Hook styles to consider: {', '.join(hook_styles)}
-
-The hook MUST stop the scroll in the first 2-3 seconds.
-Use pattern interrupts, open loops, and curiosity gaps throughout.
-End with a strong CTA that drives comments or follows.
-
-Return ONLY valid JSON with no markdown:
+Return ONLY valid JSON, no markdown:
 {{
-  "hook_line": "The exact first words spoken — must be under 10 words, stops the scroll",
+  "hook_line": "exact first words — under 10 words",
   "hook_duration_secs": 3,
-  "body_script": "Full spoken script for the body of the video. Use line breaks between sections. Write exactly what to say.",
-  "cta_line": "The exact closing call to action",
-  "estimated_duration": {target_secs},
-  "on_screen_text": [
-    "Text overlay 1 — shown in first 3 secs",
-    "Text overlay 2 — shown mid video",
-    "Text overlay 3 — shown at CTA"
-  ],
-  "suggested_sounds": "Description of audio style that fits this content, e.g. upbeat background music, no music just voice, trending audio"
+  "body_script": "full spoken script with line breaks between sections",
+  "cta_line": "exact closing call to action",
+  "estimated_duration": {target},
+  "on_screen_text": ["overlay 1", "overlay 2", "overlay 3"],
+  "suggested_sounds": "audio style description"
 }}"""
 
     response = anthropic_client.messages.create(
@@ -133,49 +115,38 @@ Return ONLY valid JSON with no markdown:
         max_tokens=800,
         messages=[{"role": "user", "content": prompt}]
     )
-    raw = response.content[0].text.strip()
-    raw = raw.replace("```json", "").replace("```", "").strip()
+    raw = response.content[0].text.strip().replace("```json", "").replace("```", "").strip()
     return json.loads(raw)
-
-
-def save_script(post_id: str, script: dict):
-    supabase.table("tiktok_scripts").insert({
-        "post_id":             post_id,
-        "hook_line":           script.get("hook_line", ""),
-        "hook_duration_secs":  script.get("hook_duration_secs", 3),
-        "body_script":         script.get("body_script", ""),
-        "cta_line":            script.get("cta_line", ""),
-        "estimated_duration":  script.get("estimated_duration", 60),
-        "on_screen_text":      script.get("on_screen_text", []),
-        "suggested_sounds":    script.get("suggested_sounds", ""),
-        "created_at":          datetime.now(timezone.utc).isoformat(),
-    }).execute()
 
 
 def run_tiktok(user_id: str, agent_id: str, config: dict):
     logger.info(f"[TikTok] Starting run for user {user_id}")
-    run_id = start_run(agent_id)
-    posts  = get_unscripted_tiktok_posts(user_id)
-
-    if not posts:
-        logger.info("[TikTok] No unscripted TikTok posts found")
-        finish_run(run_id, agent_id, 0, 0, "No unscripted TikTok posts")
-        return
-
+    run_id   = start_run(agent_id)
+    posts    = get_unscripted_posts(user_id)
     scripted = 0
+
     try:
         for post in posts:
             try:
-                script = generate_tiktok_script(post, config)
-                save_script(post["id"], script)
+                script = generate_script(post, config)
+                supabase.table("tiktok_scripts").insert({
+                    "post_id":            post["id"],
+                    "hook_line":          script.get("hook_line", ""),
+                    "hook_duration_secs": script.get("hook_duration_secs", 3),
+                    "body_script":        script.get("body_script", ""),
+                    "cta_line":           script.get("cta_line", ""),
+                    "estimated_duration": script.get("estimated_duration", 60),
+                    "on_screen_text":     script.get("on_screen_text", []),
+                    "suggested_sounds":   script.get("suggested_sounds", ""),
+                    "created_at":         datetime.now(timezone.utc).isoformat(),
+                }).execute()
                 scripted += 1
-                logger.info(f"[TikTok] Scripted: {post['content'][:50]}")
             except Exception as e:
                 logger.warning(f"[TikTok] Failed on post {post['id']}: {e}")
                 continue
 
         finish_run(run_id, agent_id, len(posts), scripted,
-                   f"Generated {scripted} TikTok scripts from {len(posts)} posts")
+                   f"Generated {scripted} TikTok scripts")
         logger.success(f"[TikTok] Done — {scripted} scripts saved")
 
     except Exception as e:
@@ -184,7 +155,5 @@ def run_tiktok(user_id: str, agent_id: str, config: dict):
 
 
 def run_all_tiktok_agents():
-    agents = get_all_tiktok_agents()
-    logger.info(f"[TikTok] Running {len(agents)} TikTok agents")
-    for agent in agents:
+    for agent in get_all_tiktok_agents():
         run_tiktok(agent["user_id"], agent["id"], agent.get("config", {}))
